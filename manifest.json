@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Simple AutoClicker",
+  "version": "1.0",
+  "description": "Простой автокликер",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}

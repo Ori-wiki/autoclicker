@@ -1,14 +1,65 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 
 <head>
   <meta charset="UTF-8">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-  <button id="start">Start</button>
-  <button id="stop">Stop</button>
+  <main class="popup">
+    <div class="header">
+      <h1 class="title">AutoClicker</h1>
+      <div id="status" class="status stopped">Stopped</div>
+    </div>
+
+    <label class="field" for="cps">
+      <span class="field-label">Clicks/sec</span>
+      <input id="cps" class="input" type="number" min="0.2" max="50" step="0.2" value="1">
+    </label>
+
+    <label class="field" for="jitter">
+      <span class="field-label">Jitter (%)</span>
+      <input id="jitter" class="input" type="number" min="0" max="80" step="1" value="0">
+    </label>
+
+    <label class="field" for="mouseButton">
+      <span class="field-label">Mouse button</span>
+      <select id="mouseButton" class="input">
+        <option value="left">Left</option>
+        <option value="middle">Middle</option>
+        <option value="right">Right</option>
+      </select>
+    </label>
+
+    <label class="field" for="clickType">
+      <span class="field-label">Click type</span>
+      <select id="clickType" class="input">
+        <option value="single">Single</option>
+        <option value="double">Double</option>
+      </select>
+    </label>
+
+    <label class="field" for="startHotkey">
+      <span class="field-label">Start hotkey</span>
+      <input id="startHotkey" class="input" type="text" value="Q" readonly>
+    </label>
+
+    <label class="field" for="stopHotkey">
+      <span class="field-label">Stop hotkey</span>
+      <input id="stopHotkey" class="input" type="text" value="W" readonly>
+    </label>
+
+    <button id="save" class="btn btn-save">Save settings</button>
+
+    <div class="actions">
+      <button id="start" class="btn btn-start">Start</button>
+      <button id="stop" class="btn btn-stop">Stop</button>
+    </div>
+
+    <p class="hint">Panic key: <strong>Esc</strong> always stops clicking.</p>
+  </main>
 
   <script src="popup.js"></script>
 </body>

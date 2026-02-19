@@ -1,0 +1,151 @@
+:root {
+  --bg-1: #fff7ed;
+  --bg-2: #ffedd5;
+  --text: #1f2937;
+  --muted: #475569;
+  --line: #fdba74;
+  --panel: rgba(255, 255, 255, 0.75);
+  --start: #0f766e;
+  --start-hover: #115e59;
+  --stop: #b91c1c;
+  --stop-hover: #991b1b;
+  --save: #1d4ed8;
+  --save-hover: #1e40af;
+  --ok: #166534;
+  --warn: #92400e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 300px;
+  padding: 14px;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--text);
+  background: radial-gradient(circle at top left, var(--bg-1), var(--bg-2));
+}
+
+.popup {
+  display: grid;
+  gap: 10px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.status {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.status.running {
+  color: var(--ok);
+}
+
+.status.stopped {
+  color: var(--warn);
+}
+
+.status.error {
+  color: var(--stop);
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: var(--panel);
+}
+
+.input:focus {
+  outline: 2px solid #fb923c;
+  outline-offset: 1px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-save {
+  background: var(--save);
+}
+
+.btn-save:hover {
+  background: var(--save-hover);
+}
+
+.btn-start {
+  background: var(--start);
+}
+
+.btn-start:hover {
+  background: var(--start-hover);
+}
+
+.btn-stop {
+  background: var(--stop);
+}
+
+.btn-stop:hover {
+  background: var(--stop-hover);
+}
+
+.hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}

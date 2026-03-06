@@ -35,6 +35,12 @@ body {
   justify-content: space-between;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .title { margin: 0; font-size: 18px; }
 
 .status {
@@ -123,6 +129,11 @@ body {
   align-items: center;
   font-size: 12px;
   color: var(--muted);
+}
+
+.check.compact {
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .btn {

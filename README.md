@@ -82,6 +82,7 @@
 
 - `manifest.json` - манифест MV3 + команды
 - `background.js` - обработка global hotkeys (commands)
+- `common.js` - общие константы/нормализация/утилиты для popup и content
 - `popup.html` / `popup.css` / `popup.js` - UI и управление профилями
 - `content.js` - движок кликов, макросы, stop conditions, overlay
 

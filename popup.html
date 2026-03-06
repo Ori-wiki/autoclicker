@@ -10,7 +10,10 @@
   <main class="popup">
     <header class="header">
       <h1 class="title">AutoClicker</h1>
-      <div id="status" class="status stopped">STOPPED</div>
+      <div class="header-right">
+        <label class="check compact"><input id="overlayEnabled" type="checkbox"> Info block</label>
+        <div id="status" class="status stopped">STOPPED</div>
+      </div>
     </header>
 
     <section class="panel">
@@ -66,13 +69,6 @@
       <label class="field">
         <span class="field-label">Stop hotkey</span>
         <input id="stopHotkey" class="input" type="text" readonly>
-      </label>
-      <label class="field">
-        <span class="field-label">Overlay</span>
-        <select id="overlayEnabled" class="input">
-          <option value="true">Enabled</option>
-          <option value="false">Disabled</option>
-        </select>
       </label>
     </section>
 
@@ -183,6 +179,8 @@
 
     <p class="hint">Emergency stop: <strong>Esc</strong>. Extension hotkeys: <strong>Ctrl+Shift+1/2/3</strong>.</p>
   </main>
+  <script src="common.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
+

@@ -1,48 +1,30 @@
-﻿const DEFAULT_PROFILE = {
-  id: 'default',
-  name: 'Default',
-  cps: 1,
-  jitter: 0,
-  clickType: 'single',
-  mouseButton: 'left',
-  startHotkey: 'KeyQ',
-  pauseHotkey: 'KeyE',
-  stopHotkey: 'KeyW',
-  maxClicks: 0,
-  maxDurationSec: 0,
-  useTemplate: false,
-  templatePoints: [],
-  stopOnColorEnabled: false,
-  stopColorHex: '#ff0000',
-  stopColorTolerance: 12,
-  stopColorPoint: { x: 0, y: 0 },
-  stopOnSelectorEnabled: false,
-  stopSelector: '',
-  stopOnWindowBlur: true,
-  bindToTabUrl: true,
-  safeAreaEnabled: false,
-  safeArea: { x: 0, y: 0, width: 0, height: 0 },
-  overlayEnabled: true,
-  scheduleMode: 'manual',
-  scheduleDelaySec: 0,
-  scheduleAtISO: '',
-  macroEvents: [],
-};
+﻿const shared = globalThis.AutoClickerShared;
+const {
+  DEFAULT_PROFILE,
+  normalizeProfile,
+  normalizeConfig,
+  normalizePoint,
+  normalizeMacroEvent,
+  getActiveProfile,
+  mapStopReason,
+} = shared;
 
-const DEFAULT_CONFIG = {
-  version: 2,
-  activeProfileId: 'default',
-  profiles: [DEFAULT_PROFILE],
-};
-
-const MAX_LOGS = 250;
 const LIFETIME_STATS_KEY = 'autoclickerLifetimeStats';
+const MAX_LOGS = 250;
 
-let config = { ...DEFAULT_CONFIG };
-let activeProfile = { ...DEFAULT_PROFILE };
-let mousePos = { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
-let templateIndex = 0;
-let boundUrlAtStart = '';
+const runtime = {
+  config: normalizeConfig(null),
+  activeProfile: normalizeProfile(DEFAULT_PROFILE),
+  mousePos: { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) },
+  templateIndex: 0,
+  boundUrlAtStart: '',
+  logs: [],
+  lifetimeStats: {
+    totalClicks: 0,
+    sessions: 0,
+    totalRunMs: 0,
+  },
+};
 
 const engine = {
   state: 'stopped',
@@ -59,173 +41,49 @@ const engine = {
 const macro = {
   recording: false,
   playing: false,
-  events: [],
   startedAtMs: 0,
+  events: [],
   playbackTimers: [],
-};
-
-let logs = [];
-let lifetimeStats = {
-  totalClicks: 0,
-  sessions: 0,
-  totalRunMs: 0,
 };
 
 const overlay = createOverlay();
 
-function clamp(number, min, max) {
-  return Math.min(max, Math.max(min, number));
-}
-
-function normalizeHotkey(code, fallback) {
-  return typeof code === 'string' && code.length > 0 ? code : fallback;
-}
-
-function normalizePoint(raw) {
-  const x = Number(raw?.x);
-  const y = Number(raw?.y);
-  return {
-    x: Number.isFinite(x) ? Math.round(x) : 0,
-    y: Number.isFinite(y) ? Math.round(y) : 0,
-  };
-}
-
-function normalizeSafeArea(raw) {
-  const point = normalizePoint(raw);
-  const width = Number(raw?.width);
-  const height = Number(raw?.height);
-  return {
-    x: point.x,
-    y: point.y,
-    width: Number.isFinite(width) ? Math.max(0, Math.round(width)) : 0,
-    height: Number.isFinite(height) ? Math.max(0, Math.round(height)) : 0,
-  };
-}
-
-function normalizeMacroEvent(event) {
-  const whenMs = Number(event?.whenMs);
-  const type = event?.type === 'key' ? 'key' : 'click';
-
-  if (!Number.isFinite(whenMs) || whenMs < 0) {
-    return null;
-  }
-
-  if (type === 'key') {
-    const code = typeof event.code === 'string' ? event.code : '';
-    if (!code) {
-      return null;
-    }
-
-    return {
-      type,
-      whenMs: Math.round(whenMs),
-      code,
-    };
-  }
-
-  return {
-    type,
-    whenMs: Math.round(whenMs),
-    x: normalizePoint(event).x,
-    y: normalizePoint(event).y,
-    button: ['left', 'middle', 'right'].includes(event?.button) ? event.button : 'left',
-    clickType: event?.clickType === 'double' ? 'double' : 'single',
-  };
-}
-
-function normalizeProfile(raw = {}) {
-  const cps = Number(raw.cps);
-  const jitter = Number(raw.jitter);
-  const maxClicks = Number(raw.maxClicks);
-  const maxDurationSec = Number(raw.maxDurationSec);
-  const scheduleDelaySec = Number(raw.scheduleDelaySec);
-  const stopColorTolerance = Number(raw.stopColorTolerance);
-  const templatePoints = Array.isArray(raw.templatePoints)
-    ? raw.templatePoints.map(normalizePoint).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-    : [];
-
-  const macroEvents = Array.isArray(raw.macroEvents)
-    ? raw.macroEvents.map(normalizeMacroEvent).filter(Boolean)
-    : [];
-
-  return {
-    id: typeof raw.id === 'string' && raw.id ? raw.id : `profile-${Date.now()}`,
-    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : 'Profile',
-    cps: Number.isFinite(cps) ? clamp(cps, 0.2, 100) : DEFAULT_PROFILE.cps,
-    jitter: Number.isFinite(jitter) ? clamp(Math.round(jitter), 0, 95) : DEFAULT_PROFILE.jitter,
-    clickType: raw.clickType === 'double' ? 'double' : 'single',
-    mouseButton: ['left', 'middle', 'right'].includes(raw.mouseButton) ? raw.mouseButton : 'left',
-    startHotkey: normalizeHotkey(raw.startHotkey, DEFAULT_PROFILE.startHotkey),
-    pauseHotkey: normalizeHotkey(raw.pauseHotkey, DEFAULT_PROFILE.pauseHotkey),
-    stopHotkey: normalizeHotkey(raw.stopHotkey, DEFAULT_PROFILE.stopHotkey),
-    maxClicks: Number.isFinite(maxClicks) ? Math.max(0, Math.round(maxClicks)) : 0,
-    maxDurationSec: Number.isFinite(maxDurationSec) ? Math.max(0, maxDurationSec) : 0,
-    useTemplate: Boolean(raw.useTemplate),
-    templatePoints,
-    stopOnColorEnabled: Boolean(raw.stopOnColorEnabled),
-    stopColorHex: typeof raw.stopColorHex === 'string' ? raw.stopColorHex : DEFAULT_PROFILE.stopColorHex,
-    stopColorTolerance: Number.isFinite(stopColorTolerance) ? clamp(Math.round(stopColorTolerance), 0, 255) : DEFAULT_PROFILE.stopColorTolerance,
-    stopColorPoint: normalizePoint(raw.stopColorPoint),
-    stopOnSelectorEnabled: Boolean(raw.stopOnSelectorEnabled),
-    stopSelector: typeof raw.stopSelector === 'string' ? raw.stopSelector.trim() : '',
-    stopOnWindowBlur: raw.stopOnWindowBlur !== false,
-    bindToTabUrl: raw.bindToTabUrl !== false,
-    safeAreaEnabled: Boolean(raw.safeAreaEnabled),
-    safeArea: normalizeSafeArea(raw.safeArea),
-    overlayEnabled: raw.overlayEnabled !== false,
-    scheduleMode: ['manual', 'delay', 'at'].includes(raw.scheduleMode) ? raw.scheduleMode : 'manual',
-    scheduleDelaySec: Number.isFinite(scheduleDelaySec) ? Math.max(0, scheduleDelaySec) : 0,
-    scheduleAtISO: typeof raw.scheduleAtISO === 'string' ? raw.scheduleAtISO : '',
-    macroEvents,
-  };
-}
-
-function normalizeConfig(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return { ...DEFAULT_CONFIG, profiles: [normalizeProfile(DEFAULT_PROFILE)] };
-  }
-
-  if (Array.isArray(raw.profiles) && raw.profiles.length > 0) {
-    const profiles = raw.profiles.map(normalizeProfile);
-    const activeProfileId = typeof raw.activeProfileId === 'string' ? raw.activeProfileId : profiles[0].id;
-    return {
-      version: 2,
-      profiles,
-      activeProfileId,
-    };
-  }
-
-  const legacy = normalizeProfile(raw);
-  return {
-    version: 2,
-    activeProfileId: legacy.id,
-    profiles: [legacy],
-  };
-}
-
-function applyConfig(nextConfig) {
-  config = normalizeConfig(nextConfig);
-  const matched = config.profiles.find((profile) => profile.id === config.activeProfileId) || config.profiles[0];
-  activeProfile = { ...matched };
-
-  if (!engine.state || engine.state === 'stopped') {
-    templateIndex = 0;
-  }
-
-  ensureOverlayVisibility();
-  renderOverlay();
-}
-
 function logEvent(level, message) {
-  logs.push({
+  runtime.logs.push({
     ts: new Date().toISOString(),
     level,
     message,
   });
 
-  if (logs.length > MAX_LOGS) {
-    logs = logs.slice(logs.length - MAX_LOGS);
+  if (runtime.logs.length > MAX_LOGS) {
+    runtime.logs = runtime.logs.slice(-MAX_LOGS);
   }
+}
+
+function applyConfig(nextConfig) {
+  runtime.config = normalizeConfig(nextConfig);
+  runtime.activeProfile = { ...getActiveProfile(runtime.config) };
+
+  if (engine.state === 'stopped') {
+    runtime.templateIndex = 0;
+  }
+
+  renderOverlay();
+}
+
+function updateActiveProfile(patch) {
+  const next = normalizeProfile({
+    ...runtime.activeProfile,
+    ...patch,
+  });
+
+  runtime.activeProfile = next;
+  runtime.config = {
+    ...runtime.config,
+    profiles: runtime.config.profiles.map((profile) => (profile.id === next.id ? next : profile)),
+  };
+
+  renderOverlay();
 }
 
 function getRunningMs() {
@@ -234,17 +92,13 @@ function getRunningMs() {
   }
 
   const now = Date.now();
-  const paused = engine.totalPausedMs + (engine.state === 'paused' ? now - engine.pauseStartedAtMs : 0);
-  return Math.max(0, now - engine.startedAtMs - paused);
+  const pausedMs = engine.totalPausedMs + (engine.state === 'paused' ? now - engine.pauseStartedAtMs : 0);
+  return Math.max(0, now - engine.startedAtMs - pausedMs);
 }
 
 function getCurrentCps() {
-  const runningMs = getRunningMs();
-  if (runningMs <= 0) {
-    return 0;
-  }
-
-  return engine.clickCount / (runningMs / 1000);
+  const runMs = getRunningMs();
+  return runMs > 0 ? engine.clickCount / (runMs / 1000) : 0;
 }
 
 function buttonToIndex(button) {
@@ -271,8 +125,8 @@ function buttonToMask(index) {
   return 1;
 }
 
-function dispatchMouseEvent(type, x, y, buttonIndex) {
-  const target = document.elementFromPoint(x, y);
+function dispatchMouse(type, point, buttonIndex) {
+  const target = document.elementFromPoint(point.x, point.y);
   if (!target) {
     return false;
   }
@@ -281,8 +135,8 @@ function dispatchMouseEvent(type, x, y, buttonIndex) {
     bubbles: true,
     cancelable: true,
     view: window,
-    clientX: x,
-    clientY: y,
+    clientX: point.x,
+    clientY: point.y,
     button: buttonIndex,
     buttons: buttonToMask(buttonIndex),
   }));
@@ -290,54 +144,55 @@ function dispatchMouseEvent(type, x, y, buttonIndex) {
   return true;
 }
 
-function performClick(x, y, button, clickType) {
+function performClick(point, button, clickType) {
   const buttonIndex = buttonToIndex(button);
-  const primaryDone = dispatchMouseEvent('mousedown', x, y, buttonIndex)
-    && dispatchMouseEvent('mouseup', x, y, buttonIndex);
 
-  if (!primaryDone) {
+  if (!dispatchMouse('mousedown', point, buttonIndex) || !dispatchMouse('mouseup', point, buttonIndex)) {
     return false;
   }
 
   if (buttonIndex === 2) {
-    dispatchMouseEvent('contextmenu', x, y, buttonIndex);
+    dispatchMouse('contextmenu', point, buttonIndex);
   } else {
-    dispatchMouseEvent('click', x, y, buttonIndex);
+    dispatchMouse('click', point, buttonIndex);
   }
 
   if (clickType === 'double' && button === 'left') {
-    dispatchMouseEvent('mousedown', x, y, 0);
-    dispatchMouseEvent('mouseup', x, y, 0);
-    dispatchMouseEvent('click', x, y, 0);
-    dispatchMouseEvent('dblclick', x, y, 0);
+    dispatchMouse('mousedown', point, 0);
+    dispatchMouse('mouseup', point, 0);
+    dispatchMouse('click', point, 0);
+    dispatchMouse('dblclick', point, 0);
   }
 
   return true;
 }
 
+function nextClickPoint() {
+  const profile = runtime.activeProfile;
+  if (profile.useTemplate && profile.templatePoints.length > 0) {
+    const point = profile.templatePoints[runtime.templateIndex % profile.templatePoints.length];
+    runtime.templateIndex += 1;
+    return point;
+  }
+
+  return { ...runtime.mousePos };
+}
+
 function pointInsideSafeArea(point) {
-  if (!activeProfile.safeAreaEnabled) {
+  const profile = runtime.activeProfile;
+  if (!profile.safeAreaEnabled) {
     return true;
   }
 
-  const area = activeProfile.safeArea;
+  const area = profile.safeArea;
   if (area.width <= 0 || area.height <= 0) {
     return false;
   }
 
-  const x2 = area.x + area.width;
-  const y2 = area.y + area.height;
-  return point.x >= area.x && point.x <= x2 && point.y >= area.y && point.y <= y2;
-}
-
-function getNextClickPoint() {
-  if (activeProfile.useTemplate && activeProfile.templatePoints.length > 0) {
-    const point = activeProfile.templatePoints[templateIndex % activeProfile.templatePoints.length];
-    templateIndex += 1;
-    return point;
-  }
-
-  return { ...mousePos };
+  return point.x >= area.x
+    && point.y >= area.y
+    && point.x <= area.x + area.width
+    && point.y <= area.y + area.height;
 }
 
 function hexToRgb(hex) {
@@ -361,12 +216,8 @@ function hexToRgb(hex) {
   };
 }
 
-function parseRgbFromCss(cssValue) {
-  if (typeof cssValue !== 'string') {
-    return null;
-  }
-
-  const match = cssValue.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+function parseRgbColor(value) {
+  const match = String(value || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
   if (!match) {
     return null;
   }
@@ -383,42 +234,43 @@ function colorDistance(a, b) {
 }
 
 function checkStopConditions() {
-  if (activeProfile.maxClicks > 0 && engine.clickCount >= activeProfile.maxClicks) {
+  const profile = runtime.activeProfile;
+
+  if (profile.maxClicks > 0 && engine.clickCount >= profile.maxClicks) {
     return 'max-clicks';
   }
 
-  if (activeProfile.maxDurationSec > 0 && getRunningMs() >= activeProfile.maxDurationSec * 1000) {
+  if (profile.maxDurationSec > 0 && getRunningMs() >= profile.maxDurationSec * 1000) {
     return 'max-duration';
   }
 
-  if (activeProfile.stopOnWindowBlur && !document.hasFocus()) {
+  if (profile.stopOnWindowBlur && !document.hasFocus()) {
     return 'window-blur';
   }
 
-  if (activeProfile.bindToTabUrl && boundUrlAtStart && location.href !== boundUrlAtStart) {
+  if (profile.bindToTabUrl && runtime.boundUrlAtStart && location.href !== runtime.boundUrlAtStart) {
     return 'url-changed';
   }
 
-  if (activeProfile.stopOnSelectorEnabled && activeProfile.stopSelector) {
+  if (profile.stopOnSelectorEnabled && profile.stopSelector) {
     try {
-      if (document.querySelector(activeProfile.stopSelector)) {
+      if (document.querySelector(profile.stopSelector)) {
         return 'selector-found';
       }
-    } catch (error) {
+    } catch {
       return 'selector-invalid';
     }
   }
 
-  if (activeProfile.stopOnColorEnabled) {
-    const targetColor = hexToRgb(activeProfile.stopColorHex);
-    if (targetColor) {
-      const point = activeProfile.stopColorPoint;
-      const element = document.elementFromPoint(point.x, point.y);
-      if (element) {
-        const styleColor = parseRgbFromCss(window.getComputedStyle(element).backgroundColor);
-        if (styleColor && colorDistance(styleColor, targetColor) <= activeProfile.stopColorTolerance) {
-          return 'color-match';
-        }
+  if (profile.stopOnColorEnabled) {
+    const targetColor = hexToRgb(profile.stopColorHex);
+    const point = profile.stopColorPoint;
+    const element = document.elementFromPoint(point.x, point.y);
+
+    if (targetColor && element) {
+      const current = parseRgbColor(window.getComputedStyle(element).backgroundColor);
+      if (current && colorDistance(current, targetColor) <= profile.stopColorTolerance) {
+        return 'color-match';
       }
     }
   }
@@ -426,65 +278,70 @@ function checkStopConditions() {
   return null;
 }
 
-function getBaseDelayMs() {
-  return Math.max(10, Math.round(1000 / activeProfile.cps));
+function clickDelayMs() {
+  const profile = runtime.activeProfile;
+  const base = Math.max(10, Math.round(1000 / profile.cps));
+  const spread = base * (profile.jitter / 100);
+  return Math.max(10, Math.round(base + ((Math.random() * 2 - 1) * spread)));
 }
 
-function getNextDelayMs() {
-  const base = getBaseDelayMs();
-  const spread = base * (activeProfile.jitter / 100);
-  const delay = base + ((Math.random() * 2 - 1) * spread);
-  return Math.max(10, Math.round(delay));
-}
-
-function clearClickTimeout() {
+function clearTimers() {
   if (engine.clickTimeoutId) {
     window.clearTimeout(engine.clickTimeoutId);
     engine.clickTimeoutId = null;
   }
-}
 
-function clearSchedulerTimeout() {
   if (engine.schedulerTimeoutId) {
     window.clearTimeout(engine.schedulerTimeoutId);
     engine.schedulerTimeoutId = null;
   }
 }
 
-function finalizeRunStats() {
+function saveLifetimeStats() {
   const runMs = getRunningMs();
   if (runMs <= 0 && engine.clickCount <= 0) {
     return;
   }
 
-  lifetimeStats.totalClicks += engine.clickCount;
-  lifetimeStats.sessions += 1;
-  lifetimeStats.totalRunMs += runMs;
-  chrome.storage.local.set({ [LIFETIME_STATS_KEY]: lifetimeStats });
+  runtime.lifetimeStats.totalClicks += engine.clickCount;
+  runtime.lifetimeStats.sessions += 1;
+  runtime.lifetimeStats.totalRunMs += runMs;
+  chrome.storage.local.set({ [LIFETIME_STATS_KEY]: runtime.lifetimeStats });
 }
 
 function stopEngine(reason = 'manual') {
-  clearSchedulerTimeout();
-  clearClickTimeout();
+  clearTimers();
 
   if (engine.state !== 'stopped') {
-    finalizeRunStats();
+    saveLifetimeStats();
   }
 
   engine.state = 'stopped';
+  engine.startedAtMs = 0;
   engine.pauseStartedAtMs = 0;
   engine.totalPausedMs = 0;
-  engine.startedAtMs = 0;
-  templateIndex = 0;
   engine.stopReason = reason;
+  runtime.templateIndex = 0;
 
   logEvent('info', `Stopped: ${reason}`);
   renderOverlay();
 }
 
+function scheduleTick() {
+  if (engine.state !== 'running') {
+    return;
+  }
+
+  engine.clickTimeoutId = window.setTimeout(clickTick, clickDelayMs());
+}
+
 function setPaused(paused) {
   if (paused && engine.state === 'running') {
-    clearClickTimeout();
+    if (engine.clickTimeoutId) {
+      window.clearTimeout(engine.clickTimeoutId);
+      engine.clickTimeoutId = null;
+    }
+
     engine.state = 'paused';
     engine.pauseStartedAtMs = Date.now();
     logEvent('info', 'Paused');
@@ -497,8 +354,8 @@ function setPaused(paused) {
     engine.pauseStartedAtMs = 0;
     engine.state = 'running';
     logEvent('info', 'Resumed');
-    scheduleClickTick();
     renderOverlay();
+    scheduleTick();
   }
 }
 
@@ -507,76 +364,50 @@ function clickTick() {
     return;
   }
 
-  const stopReason = checkStopConditions();
-  if (stopReason) {
-    stopEngine(stopReason);
+  const reasonBefore = checkStopConditions();
+  if (reasonBefore) {
+    stopEngine(reasonBefore);
     return;
   }
 
-  const point = getNextClickPoint();
-
+  const point = nextClickPoint();
   if (!pointInsideSafeArea(point)) {
     stopEngine('safety-area');
     return;
   }
 
-  if (performClick(point.x, point.y, activeProfile.mouseButton, activeProfile.clickType)) {
+  if (performClick(point, runtime.activeProfile.mouseButton, runtime.activeProfile.clickType)) {
     engine.clickCount += 1;
   }
 
-  renderOverlay();
-
-  const postClickReason = checkStopConditions();
-  if (postClickReason) {
-    stopEngine(postClickReason);
+  const reasonAfter = checkStopConditions();
+  if (reasonAfter) {
+    stopEngine(reasonAfter);
     return;
   }
 
-  scheduleClickTick();
-}
-
-function scheduleClickTick() {
-  clearClickTimeout();
-
-  if (engine.state !== 'running') {
-    return;
-  }
-
-  engine.clickTimeoutId = window.setTimeout(clickTick, getNextDelayMs());
-}
-
-function startMainLoop() {
-  engine.state = 'running';
-  engine.startedAtMs = Date.now();
-  engine.clickCount = 0;
-  engine.totalPausedMs = 0;
-  engine.pauseStartedAtMs = 0;
-  boundUrlAtStart = location.href;
-
-  logEvent('info', `Started profile: ${activeProfile.name}`);
-  scheduleClickTick();
   renderOverlay();
+  scheduleTick();
 }
 
 function runSelfTest() {
+  const profile = runtime.activeProfile;
   const errors = [];
   const warnings = [];
 
-  if (!Number.isFinite(mousePos.x) || !Number.isFinite(mousePos.y)) {
+  if (!Number.isFinite(runtime.mousePos.x) || !Number.isFinite(runtime.mousePos.y)) {
     errors.push('mouse-position-unavailable');
   }
 
-  if (activeProfile.safeAreaEnabled) {
-    if (activeProfile.safeArea.width <= 0 || activeProfile.safeArea.height <= 0) {
-      errors.push('invalid-safe-area');
-    }
+  if (profile.safeAreaEnabled && (profile.safeArea.width <= 0 || profile.safeArea.height <= 0)) {
+    errors.push('invalid-safe-area');
   }
 
-  if (activeProfile.useTemplate && activeProfile.templatePoints.length === 0) {
+  if (profile.useTemplate && profile.templatePoints.length === 0) {
     errors.push('template-enabled-without-points');
   }
 
-  if (activeProfile.bindToTabUrl && !location.href) {
+  if (profile.bindToTabUrl && !location.href) {
     errors.push('url-unavailable');
   }
 
@@ -584,10 +415,10 @@ function runSelfTest() {
     warnings.push('tab-not-focused');
   }
 
-  if (activeProfile.stopOnSelectorEnabled && activeProfile.stopSelector) {
+  if (profile.stopOnSelectorEnabled && profile.stopSelector) {
     try {
-      document.querySelector(activeProfile.stopSelector);
-    } catch (error) {
+      document.querySelector(profile.stopSelector);
+    } catch {
       errors.push('invalid-stop-selector');
     }
   }
@@ -600,43 +431,57 @@ function runSelfTest() {
   };
 }
 
-function startEngineWithSchedule() {
+function startMainLoop() {
+  engine.state = 'running';
+  engine.startedAtMs = Date.now();
+  engine.clickCount = 0;
+  engine.totalPausedMs = 0;
+  engine.pauseStartedAtMs = 0;
+  runtime.boundUrlAtStart = location.href;
+
+  logEvent('info', `Started profile: ${runtime.activeProfile.name}`);
+  renderOverlay();
+  scheduleTick();
+}
+
+function startEngine() {
   if (engine.state === 'running' || engine.state === 'paused') {
     return { ok: true, scheduled: false, reason: 'already-running' };
   }
 
-  const check = runSelfTest();
-  if (!check.ok) {
-    logEvent('error', `Self-test failed: ${check.errors.join(', ')}`);
-    return { ok: false, selfTest: check };
+  const selfTest = runSelfTest();
+  if (!selfTest.ok) {
+    logEvent('error', `Self-test failed: ${selfTest.errors.join(', ')}`);
+    return { ok: false, selfTest };
   }
 
-  clearSchedulerTimeout();
+  clearTimers();
 
-  if (activeProfile.scheduleMode === 'delay' && activeProfile.scheduleDelaySec > 0) {
+  const profile = runtime.activeProfile;
+  if (profile.scheduleMode === 'delay' && profile.scheduleDelaySec > 0) {
     engine.state = 'scheduled';
-    const delayMs = Math.round(activeProfile.scheduleDelaySec * 1000);
+    const delayMs = Math.round(profile.scheduleDelaySec * 1000);
     engine.schedulerTimeoutId = window.setTimeout(() => {
       engine.schedulerTimeoutId = null;
       startMainLoop();
     }, delayMs);
 
-    logEvent('info', `Scheduled start in ${activeProfile.scheduleDelaySec}s`);
+    logEvent('info', `Scheduled start in ${profile.scheduleDelaySec}s`);
     renderOverlay();
     return { ok: true, scheduled: true, delayMs };
   }
 
-  if (activeProfile.scheduleMode === 'at' && activeProfile.scheduleAtISO) {
-    const startAt = Date.parse(activeProfile.scheduleAtISO);
-    if (Number.isFinite(startAt) && startAt > Date.now()) {
+  if (profile.scheduleMode === 'at' && profile.scheduleAtISO) {
+    const startAtMs = Date.parse(profile.scheduleAtISO);
+    if (Number.isFinite(startAtMs) && startAtMs > Date.now()) {
       engine.state = 'scheduled';
-      const delayMs = startAt - Date.now();
+      const delayMs = startAtMs - Date.now();
       engine.schedulerTimeoutId = window.setTimeout(() => {
         engine.schedulerTimeoutId = null;
         startMainLoop();
       }, delayMs);
 
-      logEvent('info', `Scheduled start at ${activeProfile.scheduleAtISO}`);
+      logEvent('info', `Scheduled start at ${profile.scheduleAtISO}`);
       renderOverlay();
       return { ok: true, scheduled: true, delayMs };
     }
@@ -646,39 +491,26 @@ function startEngineWithSchedule() {
   return { ok: true, scheduled: false };
 }
 
-function isEditableElement(target) {
-  return target instanceof HTMLElement
-    && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
-}
-
 function createOverlay() {
-  const el = document.createElement('div');
-  el.id = '__autoclicker_overlay';
-  el.style.position = 'fixed';
-  el.style.right = '12px';
-  el.style.bottom = '12px';
-  el.style.zIndex = '2147483647';
-  el.style.background = 'rgba(16, 24, 40, 0.85)';
-  el.style.color = '#f8fafc';
-  el.style.padding = '8px 10px';
-  el.style.borderRadius = '8px';
-  el.style.fontFamily = 'Consolas, monospace';
-  el.style.fontSize = '12px';
-  el.style.lineHeight = '1.4';
-  el.style.pointerEvents = 'none';
-  el.style.whiteSpace = 'pre';
-  el.style.maxWidth = '360px';
-  el.style.display = 'none';
-  document.documentElement.appendChild(el);
-  return el;
-}
-
-function ensureOverlayVisibility() {
-  if (!overlay) {
-    return;
-  }
-
-  overlay.style.display = activeProfile.overlayEnabled ? 'block' : 'none';
+  const node = document.createElement('div');
+  node.id = '__autoclicker_overlay';
+  node.style.position = 'fixed';
+  node.style.right = '12px';
+  node.style.bottom = '12px';
+  node.style.zIndex = '2147483647';
+  node.style.background = 'rgba(16, 24, 40, 0.85)';
+  node.style.color = '#f8fafc';
+  node.style.padding = '8px 10px';
+  node.style.borderRadius = '8px';
+  node.style.fontFamily = 'Consolas, monospace';
+  node.style.fontSize = '12px';
+  node.style.lineHeight = '1.4';
+  node.style.pointerEvents = 'none';
+  node.style.whiteSpace = 'pre';
+  node.style.maxWidth = '360px';
+  node.style.display = 'none';
+  document.documentElement.appendChild(node);
+  return node;
 }
 
 function renderOverlay() {
@@ -686,22 +518,17 @@ function renderOverlay() {
     return;
   }
 
-  ensureOverlayVisibility();
+  overlay.style.display = runtime.activeProfile.overlayEnabled ? 'block' : 'none';
   if (overlay.style.display === 'none') {
     return;
   }
 
-  const runningMs = getRunningMs();
-  const statusLabel = engine.state.toUpperCase();
-  const timerSec = Math.floor(runningMs / 1000);
-  const avgCps = getCurrentCps();
-
   overlay.textContent = [
-    `AutoClicker: ${statusLabel}`,
-    `Profile: ${activeProfile.name}`,
+    `AutoClicker: ${engine.state.toUpperCase()}`,
+    `Profile: ${runtime.activeProfile.name}`,
     `Clicks: ${engine.clickCount}`,
-    `Avg CPS: ${avgCps.toFixed(2)}`,
-    `Timer: ${timerSec}s`,
+    `Avg CPS: ${getCurrentCps().toFixed(2)}`,
+    `Timer: ${Math.floor(getRunningMs() / 1000)}s`,
     `Last stop: ${engine.stopReason}`,
   ].join('\n');
 }
@@ -715,12 +542,21 @@ function startOverlayTicker() {
 }
 
 function loadLifetimeStats() {
-  chrome.storage.local.get({ [LIFETIME_STATS_KEY]: lifetimeStats }, (stored) => {
-    lifetimeStats = {
-      ...lifetimeStats,
+  chrome.storage.local.get({ [LIFETIME_STATS_KEY]: runtime.lifetimeStats }, (stored) => {
+    runtime.lifetimeStats = {
+      ...runtime.lifetimeStats,
       ...(stored[LIFETIME_STATS_KEY] || {}),
     };
   });
+}
+
+function clearMacroPlaybackTimers() {
+  for (const timerId of macro.playbackTimers) {
+    window.clearTimeout(timerId);
+  }
+
+  macro.playbackTimers = [];
+  macro.playing = false;
 }
 
 function startMacroRecording() {
@@ -729,8 +565,8 @@ function startMacroRecording() {
   }
 
   macro.recording = true;
-  macro.events = [];
   macro.startedAtMs = performance.now();
+  macro.events = [];
   logEvent('info', 'Macro recording started');
   return { ok: true };
 }
@@ -745,241 +581,150 @@ function stopMacroRecording() {
   return { ok: true, events: [...macro.events] };
 }
 
-function clearMacroPlaybackTimers() {
-  for (const timerId of macro.playbackTimers) {
-    window.clearTimeout(timerId);
-  }
+function playMacro(events) {
+  const normalizedEvents = Array.isArray(events)
+    ? events.map(normalizeMacroEvent).filter(Boolean)
+    : [];
 
-  macro.playbackTimers = [];
-  macro.playing = false;
-}
-
-function playbackMacro(events) {
-  if (!Array.isArray(events) || events.length === 0) {
+  if (normalizedEvents.length === 0) {
     return { ok: false, reason: 'empty-macro' };
   }
 
   clearMacroPlaybackTimers();
   macro.playing = true;
 
-  events.forEach((event) => {
+  for (const event of normalizedEvents) {
     const timerId = window.setTimeout(() => {
       if (event.type === 'click') {
-        performClick(event.x, event.y, event.button || 'left', event.clickType || 'single');
+        performClick({ x: event.x, y: event.y }, event.button, event.clickType);
+        return;
       }
 
-      if (event.type === 'key' && event.code) {
-        document.dispatchEvent(new KeyboardEvent('keydown', {
-          bubbles: true,
-          cancelable: true,
-          code: event.code,
-        }));
-        document.dispatchEvent(new KeyboardEvent('keyup', {
-          bubbles: true,
-          cancelable: true,
-          code: event.code,
-        }));
-      }
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        code: event.code,
+      }));
+      document.dispatchEvent(new KeyboardEvent('keyup', {
+        bubbles: true,
+        cancelable: true,
+        code: event.code,
+      }));
     }, event.whenMs);
 
     macro.playbackTimers.push(timerId);
-  });
+  }
 
-  const maxTime = events.reduce((max, event) => Math.max(max, event.whenMs), 0);
+  const maxTimeMs = normalizedEvents.reduce((max, event) => Math.max(max, event.whenMs), 0);
   const finishTimer = window.setTimeout(() => {
     macro.playing = false;
     macro.playbackTimers = [];
     logEvent('info', 'Macro playback finished');
-  }, maxTime + 20);
+  }, maxTimeMs + 20);
 
   macro.playbackTimers.push(finishTimer);
-  logEvent('info', `Macro playback started, events: ${events.length}`);
+  logEvent('info', `Macro playback started, events: ${normalizedEvents.length}`);
   return { ok: true };
 }
 
-function mapStopReason(reason) {
-  const map = {
-    manual: 'Manual stop',
-    'max-clicks': 'Click limit reached',
-    'max-duration': 'Time limit reached',
-    'window-blur': 'Window/tab changed',
-    'url-changed': 'URL changed',
-    'selector-found': 'Stop selector found',
-    'selector-invalid': 'Stop selector invalid',
-    'color-match': 'Color condition matched',
-    'safety-area': 'Click left safe area',
-  };
-
-  return map[reason] || reason;
-}
-
-function getStatus() {
+function statusPayload() {
   return {
     state: engine.state,
     running: engine.state === 'running',
     paused: engine.state === 'paused',
     scheduled: engine.state === 'scheduled',
-    profile: activeProfile,
-    profileName: activeProfile.name,
+    profile: runtime.activeProfile,
+    profileName: runtime.activeProfile.name,
     clickCount: engine.clickCount,
     avgCps: getCurrentCps(),
     runningMs: getRunningMs(),
     stopReason: mapStopReason(engine.stopReason),
-    logs: logs.slice(-50),
-    lifetimeStats,
+    logs: runtime.logs.slice(-50),
+    lifetimeStats: runtime.lifetimeStats,
     macro: {
       recording: macro.recording,
       playing: macro.playing,
-      eventsCount: activeProfile.macroEvents.length,
+      eventsCount: runtime.activeProfile.macroEvents.length,
     },
   };
 }
 
-function mergeSettingsIntoActiveProfile(settingsPatch = {}) {
-  const nextProfile = normalizeProfile({
-    ...activeProfile,
-    ...settingsPatch,
-  });
-
-  activeProfile = nextProfile;
-  config = {
-    ...config,
-    profiles: config.profiles.map((profile) => (profile.id === nextProfile.id ? nextProfile : profile)),
-  };
-
-  renderOverlay();
+function isEditable(target) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
 }
 
-document.addEventListener(
-  'mousemove',
-  (event) => {
-    mousePos = {
-      x: event.clientX,
-      y: event.clientY,
-    };
-  },
-  { passive: true },
-);
+function onMouseMove(event) {
+  runtime.mousePos = { x: event.clientX, y: event.clientY };
+}
 
-document.addEventListener(
-  'click',
-  (event) => {
-    if (!macro.recording || !event.isTrusted) {
-      return;
-    }
-
-    macro.events.push({
-      type: 'click',
-      whenMs: Math.round(performance.now() - macro.startedAtMs),
-      x: event.clientX,
-      y: event.clientY,
-      button: event.button === 1 ? 'middle' : event.button === 2 ? 'right' : 'left',
-      clickType: event.detail >= 2 ? 'double' : 'single',
-    });
-  },
-  true,
-);
-
-document.addEventListener(
-  'keydown',
-  (event) => {
-    if (!event.isTrusted) {
-      return;
-    }
-
-    if (macro.recording && !event.repeat) {
-      macro.events.push({
-        type: 'key',
-        whenMs: Math.round(performance.now() - macro.startedAtMs),
-        code: event.code,
-      });
-    }
-
-    if (event.repeat || isEditableElement(event.target)) {
-      return;
-    }
-
-    if (event.code === 'Escape') {
-      stopEngine('manual');
-      return;
-    }
-
-    if (event.code === activeProfile.startHotkey) {
-      startEngineWithSchedule();
-      return;
-    }
-
-    if (event.code === activeProfile.pauseHotkey) {
-      if (engine.state === 'running') {
-        setPaused(true);
-      } else if (engine.state === 'paused') {
-        setPaused(false);
-      }
-      return;
-    }
-
-    if (event.code === activeProfile.stopHotkey) {
-      stopEngine('manual');
-    }
-  },
-  true,
-);
-
-document.addEventListener('visibilitychange', () => {
-  if (activeProfile.stopOnWindowBlur && document.visibilityState === 'hidden' && engine.state !== 'stopped') {
-    stopEngine('window-blur');
-  }
-});
-
-window.addEventListener('blur', () => {
-  if (activeProfile.stopOnWindowBlur && engine.state !== 'stopped') {
-    stopEngine('window-blur');
-  }
-});
-
-chrome.storage.sync.get({ autoclickerConfig: null }, (stored) => {
-  if (stored.autoclickerConfig) {
-    applyConfig(stored.autoclickerConfig);
+function onClickCapture(event) {
+  if (!macro.recording || !event.isTrusted) {
     return;
   }
 
-  chrome.storage.sync.get(DEFAULT_PROFILE, (legacySettings) => {
-    applyConfig({
-      version: 2,
-      activeProfileId: 'default',
-      profiles: [
-        {
-          ...DEFAULT_PROFILE,
-          ...legacySettings,
-          id: 'default',
-          name: 'Default',
-        },
-      ],
-    });
+  macro.events.push({
+    type: 'click',
+    whenMs: Math.round(performance.now() - macro.startedAtMs),
+    x: event.clientX,
+    y: event.clientY,
+    button: event.button === 1 ? 'middle' : event.button === 2 ? 'right' : 'left',
+    clickType: event.detail >= 2 ? 'double' : 'single',
   });
-});
+}
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== 'sync') {
+function onKeyDown(event) {
+  if (!event.isTrusted) {
     return;
   }
 
-  if (changes.autoclickerConfig) {
-    applyConfig(changes.autoclickerConfig.newValue);
+  if (macro.recording && !event.repeat) {
+    macro.events.push({
+      type: 'key',
+      whenMs: Math.round(performance.now() - macro.startedAtMs),
+      code: event.code,
+    });
   }
-});
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (event.repeat || isEditable(event.target)) {
+    return;
+  }
+
+  if (event.code === 'Escape') {
+    stopEngine('manual');
+    return;
+  }
+
+  if (event.code === runtime.activeProfile.startHotkey) {
+    startEngine();
+    return;
+  }
+
+  if (event.code === runtime.activeProfile.pauseHotkey) {
+    if (engine.state === 'running') {
+      setPaused(true);
+    } else if (engine.state === 'paused') {
+      setPaused(false);
+    }
+    return;
+  }
+
+  if (event.code === runtime.activeProfile.stopHotkey) {
+    stopEngine('manual');
+  }
+}
+
+function handleMessage(request, sender, sendResponse) {
   if (request?.config) {
     applyConfig(request.config);
   }
 
   if (request?.settings) {
-    mergeSettingsIntoActiveProfile(request.settings);
+    updateActiveProfile(request.settings);
   }
 
   if (request?.action === 'start') {
-    sendResponse(startEngineWithSchedule());
+    sendResponse(startEngine());
     return;
   }
 
@@ -1013,12 +758,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request?.action === 'updateSettings') {
-    if (request.config) {
-      applyConfig(request.config);
-    } else {
-      mergeSettingsIntoActiveProfile(request.settings || {});
-    }
-
     sendResponse({ ok: true });
     return;
   }
@@ -1039,8 +778,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request?.action === 'macroPlay') {
-    const events = Array.isArray(request.events) ? request.events : activeProfile.macroEvents;
-    sendResponse(playbackMacro(events));
+    const events = Array.isArray(request.events) ? request.events : runtime.activeProfile.macroEvents;
+    sendResponse(playMacro(events));
     return;
   }
 
@@ -1051,10 +790,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request?.action === 'getStatus') {
-    sendResponse(getStatus());
+    sendResponse(statusPayload());
   }
-});
+}
 
-startOverlayTicker();
+function loadConfigFromStorage() {
+  chrome.storage.sync.get({ autoclickerConfig: null }, (stored) => {
+    if (stored.autoclickerConfig) {
+      applyConfig(stored.autoclickerConfig);
+      return;
+    }
+
+    chrome.storage.sync.get(DEFAULT_PROFILE, (legacy) => {
+      applyConfig({
+        version: 2,
+        activeProfileId: 'default',
+        profiles: [{ ...DEFAULT_PROFILE, ...legacy, id: 'default', name: 'Default' }],
+      });
+    });
+  });
+}
+
+function attachListeners() {
+  document.addEventListener('mousemove', onMouseMove, { passive: true });
+  document.addEventListener('click', onClickCapture, true);
+  document.addEventListener('keydown', onKeyDown, true);
+
+  document.addEventListener('visibilitychange', () => {
+    if (runtime.activeProfile.stopOnWindowBlur && document.visibilityState === 'hidden' && engine.state !== 'stopped') {
+      stopEngine('window-blur');
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    if (runtime.activeProfile.stopOnWindowBlur && engine.state !== 'stopped') {
+      stopEngine('window-blur');
+    }
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'sync' && changes.autoclickerConfig) {
+      applyConfig(changes.autoclickerConfig.newValue);
+    }
+  });
+
+  chrome.runtime.onMessage.addListener(handleMessage);
+}
+
+loadConfigFromStorage();
+attachListeners();
 loadLifetimeStats();
+startOverlayTicker();
 renderOverlay();

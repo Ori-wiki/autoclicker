@@ -1,67 +1,188 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="popup.css">
+  <title>AutoClicker</title>
 </head>
-
 <body>
   <main class="popup">
-    <div class="header">
+    <header class="header">
       <h1 class="title">AutoClicker</h1>
-      <div id="status" class="status stopped">Stopped</div>
-    </div>
+      <div id="status" class="status stopped">STOPPED</div>
+    </header>
 
-    <label class="field" for="cps">
-      <span class="field-label">Clicks/sec</span>
-      <input id="cps" class="input" type="number" min="0.2" max="50" step="0.2" value="1">
-    </label>
+    <section class="panel">
+      <div class="row split">
+        <label class="field grow">
+          <span class="field-label">Profile</span>
+          <select id="profileSelect" class="input"></select>
+        </label>
+        <button id="addProfile" class="btn btn-small">Add</button>
+        <button id="deleteProfile" class="btn btn-small btn-stop">Delete</button>
+      </div>
+      <label class="field">
+        <span class="field-label">Profile name</span>
+        <input id="profileName" class="input" type="text" value="Default">
+      </label>
+    </section>
 
-    <label class="field" for="jitter">
-      <span class="field-label">Jitter (%)</span>
-      <input id="jitter" class="input" type="number" min="0" max="80" step="1" value="0">
-    </label>
+    <section class="panel two-col">
+      <label class="field">
+        <span class="field-label">Clicks/sec</span>
+        <input id="cps" class="input" type="number" min="0.2" max="100" step="0.1">
+      </label>
+      <label class="field">
+        <span class="field-label">Jitter (%)</span>
+        <input id="jitter" class="input" type="number" min="0" max="95" step="1">
+      </label>
+      <label class="field">
+        <span class="field-label">Mouse button</span>
+        <select id="mouseButton" class="input">
+          <option value="left">Left</option>
+          <option value="middle">Middle</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">Click type</span>
+        <select id="clickType" class="input">
+          <option value="single">Single</option>
+          <option value="double">Double</option>
+        </select>
+      </label>
+    </section>
 
-    <label class="field" for="mouseButton">
-      <span class="field-label">Mouse button</span>
-      <select id="mouseButton" class="input">
-        <option value="left">Left</option>
-        <option value="middle">Middle</option>
-        <option value="right">Right</option>
-      </select>
-    </label>
+    <section class="panel two-col">
+      <label class="field">
+        <span class="field-label">Start hotkey</span>
+        <input id="startHotkey" class="input" type="text" readonly>
+      </label>
+      <label class="field">
+        <span class="field-label">Pause hotkey</span>
+        <input id="pauseHotkey" class="input" type="text" readonly>
+      </label>
+      <label class="field">
+        <span class="field-label">Stop hotkey</span>
+        <input id="stopHotkey" class="input" type="text" readonly>
+      </label>
+      <label class="field">
+        <span class="field-label">Overlay</span>
+        <select id="overlayEnabled" class="input">
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+      </label>
+    </section>
 
-    <label class="field" for="clickType">
-      <span class="field-label">Click type</span>
-      <select id="clickType" class="input">
-        <option value="single">Single</option>
-        <option value="double">Double</option>
-      </select>
-    </label>
+    <section class="panel two-col">
+      <label class="field">
+        <span class="field-label">Max clicks (0 = no limit)</span>
+        <input id="maxClicks" class="input" type="number" min="0" step="1">
+      </label>
+      <label class="field">
+        <span class="field-label">Max duration sec (0 = no limit)</span>
+        <input id="maxDurationSec" class="input" type="number" min="0" step="0.5">
+      </label>
+      <label class="field">
+        <span class="field-label">Schedule</span>
+        <select id="scheduleMode" class="input">
+          <option value="manual">Manual</option>
+          <option value="delay">Delay</option>
+          <option value="at">At datetime</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field-label">Delay sec</span>
+        <input id="scheduleDelaySec" class="input" type="number" min="0" step="1">
+      </label>
+      <label class="field full-width">
+        <span class="field-label">Start at (local datetime)</span>
+        <input id="scheduleAtISO" class="input" type="datetime-local">
+      </label>
+    </section>
 
-    <label class="field" for="startHotkey">
-      <span class="field-label">Start hotkey</span>
-      <input id="startHotkey" class="input" type="text" value="Q" readonly>
-    </label>
+    <section class="panel">
+      <label class="field">
+        <span class="field-label">Template points (one per line: x,y)</span>
+        <textarea id="templatePoints" class="input area" rows="4" placeholder="100,200&#10;120,220"></textarea>
+      </label>
+      <div class="row split">
+        <label class="check"><input id="useTemplate" type="checkbox"> Use template points in sequence</label>
+        <label class="check"><input id="bindToTabUrl" type="checkbox"> Bind to current tab URL</label>
+      </div>
+    </section>
 
-    <label class="field" for="stopHotkey">
-      <span class="field-label">Stop hotkey</span>
-      <input id="stopHotkey" class="input" type="text" value="W" readonly>
-    </label>
+    <section class="panel">
+      <div class="row split">
+        <label class="check"><input id="safeAreaEnabled" type="checkbox"> Safe area only</label>
+        <label class="check"><input id="stopOnWindowBlur" type="checkbox"> Stop on tab/window change</label>
+      </div>
+      <div class="row safe-grid">
+        <label class="field"><span class="field-label">Safe X</span><input id="safeX" class="input" type="number"></label>
+        <label class="field"><span class="field-label">Safe Y</span><input id="safeY" class="input" type="number"></label>
+        <label class="field"><span class="field-label">Safe W</span><input id="safeW" class="input" type="number" min="0"></label>
+        <label class="field"><span class="field-label">Safe H</span><input id="safeH" class="input" type="number" min="0"></label>
+      </div>
+    </section>
 
-    <button id="save" class="btn btn-save">Save settings</button>
+    <section class="panel">
+      <div class="row split">
+        <label class="check"><input id="stopOnColorEnabled" type="checkbox"> Stop on color match</label>
+        <label class="check"><input id="stopOnSelectorEnabled" type="checkbox"> Stop on selector/image marker</label>
+      </div>
+      <div class="row safe-grid">
+        <label class="field"><span class="field-label">Color</span><input id="stopColorHex" class="input" type="text" placeholder="#ff0000"></label>
+        <label class="field"><span class="field-label">Tolerance</span><input id="stopColorTolerance" class="input" type="number" min="0" max="255"></label>
+        <label class="field"><span class="field-label">Color X</span><input id="stopColorX" class="input" type="number"></label>
+        <label class="field"><span class="field-label">Color Y</span><input id="stopColorY" class="input" type="number"></label>
+      </div>
+      <label class="field">
+        <span class="field-label">Selector/Image marker (CSS selector)</span>
+        <input id="stopSelector" class="input" type="text" placeholder=".done-badge, img[alt='win']">
+      </label>
+    </section>
 
-    <div class="actions">
-      <button id="start" class="btn btn-start">Start</button>
-      <button id="stop" class="btn btn-stop">Stop</button>
-    </div>
+    <section class="panel">
+      <div class="actions three">
+        <button id="start" class="btn btn-start">Start</button>
+        <button id="pause" class="btn btn-pause">Pause/Resume</button>
+        <button id="stop" class="btn btn-stop">Stop</button>
+      </div>
+      <div class="actions three">
+        <button id="recordMacro" class="btn">Record Macro</button>
+        <button id="stopRecordMacro" class="btn">Stop Record</button>
+        <button id="playMacro" class="btn">Play Macro</button>
+      </div>
+      <div class="actions two">
+        <button id="selfTest" class="btn btn-save">Self-test</button>
+        <button id="save" class="btn btn-save">Save Profile</button>
+      </div>
+    </section>
 
-    <p class="hint">Panic key: <strong>Esc</strong> always stops clicking.</p>
+    <section class="panel">
+      <label class="field">
+        <span class="field-label">Headless/CLI args</span>
+        <input id="cliArgs" class="input" type="text" placeholder="--cps 12 --jitter 15 --duration 30 --clicks 500 --start-now">
+      </label>
+      <div class="actions two">
+        <button id="runCli" class="btn">Run CLI Start</button>
+        <button id="copyCli" class="btn">Copy JSON</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="actions two">
+        <button id="exportConfig" class="btn">Export JSON</button>
+        <label class="btn file-btn">Import JSON<input id="importConfig" type="file" accept="application/json"></label>
+      </div>
+      <p id="stats" class="stats"></p>
+      <pre id="logView" class="log"></pre>
+    </section>
+
+    <p class="hint">Emergency stop: <strong>Esc</strong>. Extension hotkeys: <strong>Ctrl+Shift+1/2/3</strong>.</p>
   </main>
-
   <script src="popup.js"></script>
 </body>
-
 </html>

@@ -1,9 +1,32 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "Simple AutoClicker",
-  "version": "1.0",
-  "description": "Простой автокликер",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "version": "2.0",
+  "description": "Simple AutoClicker with profiles, macros, safety checks, and automation modes",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "start_clicker": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+1"
+      },
+      "description": "Start autoclicker"
+    },
+    "pause_clicker": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+2"
+      },
+      "description": "Pause/resume autoclicker"
+    },
+    "stop_clicker": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+3"
+      },
+      "description": "Stop autoclicker"
+    }
+  },
   "action": {
     "default_popup": "popup.html"
   },
